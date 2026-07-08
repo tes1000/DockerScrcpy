@@ -1,0 +1,44 @@
+services:
+  scrcpy:
+    # apt's scrcpy package is stale (1.25) and breaks on Android 15+
+    # (NoSuchMethodException on hidden APIs). Pull the official static
+    # release build instead — apt only supplies runtime deps.
+    # The image is defined inline here — no separate Dockerfile needed.
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM ubuntu:24.04
+        ENV DEBIAN_FRONTEND=noninteractive
+        RUN apt-get update && \
+            apt-get install -y adb ffmpeg libsdl2-2.0-0 wget ca-certificates && \
+            wget -O /tmp/scrcpy.tar.gz https://github.com/Genymobile/scrcpy/releases/download/v3.3.3/scrcpy-linux-x86_64-v3.3.3.tar.gz && \
+            tar -xzf /tmp/scrcpy.tar.gz -C /opt && \
+            ln -s /opt/scrcpy-linux-x86_64-v3.3.3/scrcpy /usr/local/bin/scrcpy && \
+            rm -rf /var/lib/apt/lists/* /tmp/scrcpy.tar.gz
+    image: scrcpy:latest
+
+    # Share host network so X11 (GUI) connections just work — also lets
+    # adb reach a phone over wifi if you use that instead of USB.
+    network_mode: host
+
+    # Host USB access so adb/scrcpy can see a phone plugged in over USB
+    # (USB debugging must be enabled on the phone).
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+
+    environment:
+      # Which host display to draw the mirrored screen on.
+      - DISPLAY=${DISPLAY}
+      - HOME=/root
+      # X11 auth cookie location inside the container.
+      - XAUTHORITY=/root/.Xauthority
+
+    volumes:
+      # X11 socket — lets the container put windows on the host display.
+      - /tmp/.X11-unix:/tmp/.X11-unix
+
+      # Host's X11 auth cookie (read-only) so the container is allowed
+      # to use the display.
+      - ${XAUTHORITY:-${HOME}/.Xauthority}:/root/.Xauthority:ro
+
+    command: scrcpy
